@@ -69,6 +69,12 @@ function friendlyError(e) {
     'auth/weak-password': 'Use at least 6 characters for the password.',
     'auth/invalid-email': 'Enter a full email address, like sam@example.com.',
     'auth/too-many-requests': 'Too many tries. Wait a minute, then try again.',
+    'auth/invalid-action-code': 'That sign-in link has expired or was already used. Send yourself a new one.',
+    'auth/expired-action-code': 'That sign-in link has expired. Send yourself a new one.',
+    'auth/invalid-continue-uri': "This web address isn't allowed for sign-in links yet. Add it under Authentication → Settings → Authorized domains in Firebase.",
+    'auth/unauthorized-continue-uri': "This web address isn't allowed for sign-in links yet. Add it under Authentication → Settings → Authorized domains in Firebase.",
+    'auth/operation-not-allowed': "That sign-in method isn't turned on in Firebase yet.",
+    'auth/quota-exceeded': 'Too many sign-in emails were sent today. Try again tomorrow, or use a password.',
     'auth/popup-blocked': 'Your browser blocked the Google window. Allow pop-ups for this site, then try again.',
     'auth/account-exists-with-different-credential': 'That email already signs in with a password. Use email and password instead.',
     'auth/unauthorized-domain': "This web address isn't allowed to sign in yet. Add it under Authentication → Settings → Authorized domains in Firebase.",
@@ -107,6 +113,8 @@ const I = {
   back: svg('<path d="M15 5l-7 7 7 7"/>'),
   pencil: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   chevron: svg('<path d="m9 6 6 6-6 6"/>'),
+  mail: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/>'),
+  logout: svg('<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/>'),
   trash: svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
 };
 
@@ -181,24 +189,73 @@ function viewAuth() {
       </ul>
     </section>
     <section class="auth-panel">
-      <form class="auth-card" data-form="auth" novalidate>
-        <h2>${up ? 'Create your account' : 'Welcome back'}</h2>
-        <p class="sub">${up ? 'You can make a list and invite people right after.' : 'Sign in to see your lists.'}</p>
-        ${up ? `<label class="field"><span class="label">Your name</span><input class="input" name="name" data-key="auth-name" value="${val('auth-name')}" autocomplete="name" required></label>` : ''}
-        <label class="field"><span class="label">Email</span><input class="input" name="email" type="email" data-key="auth-email" value="${val('auth-email')}" autocomplete="email" required></label>
-        <label class="field"><span class="label">Password</span><input class="input" name="password" type="password" data-key="auth-pw" value="${val('auth-pw')}" autocomplete="${up ? 'new-password' : 'current-password'}" minlength="6" required>${up ? '<span class="hint">At least 6 characters.</span>' : ''}</label>
-        ${state.authError ? `<p class="form-error" role="alert">${esc(state.authError)}</p>` : ''}
-        <button class="btn btn-primary btn-block" ${state.busy ? 'disabled' : ''}>${state.busy ? 'One moment…' : up ? 'Create account' : 'Sign in'}</button>
-        ${backend.signInWithGoogle ? `<div class="or"><span>or</span></div>
-        <button type="button" class="btn btn-ghost btn-block btn-google" data-action="google" ${state.busy ? 'disabled' : ''}>
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2.1-1.9 3.2-4.8 3.2-8z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.6-2.7c-1 .7-2.2 1.1-3.7 1.1-2.9 0-5.3-1.9-6.2-4.5H2.1v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.8 14.2a6.6 6.6 0 0 1 0-4.3V7.1H2.1a11 11 0 0 0 0 9.9z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.2-3.2A11 11 0 0 0 2.1 7.1l3.7 2.8C6.7 7.3 9.1 5.4 12 5.4z"/></svg>
-          Continue with Google</button>` : ''}
-        <p class="auth-switch">${up ? 'Already have an account?' : 'New to Stocked?'}
-          <button type="button" class="link" data-action="auth-mode">${up ? 'Sign in' : 'Create an account'}</button></p>
-      </form>
+      ${authCard()}
       ${DEMO ? `<p class="demo-note"><strong>Demo mode.</strong> Accounts and lists here are saved in this browser only, not shared. New accounts start with a sample pantry.</p>` : ''}
     </section>
   </div>`;
+}
+
+const GOOGLE_G = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2.1-1.9 3.2-4.8 3.2-8z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.6-2.7c-1 .7-2.2 1.1-3.7 1.1-2.9 0-5.3-1.9-6.2-4.5H2.1v2.8A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.8 14.2a6.6 6.6 0 0 1 0-4.3V7.1H2.1a11 11 0 0 0 0 9.9z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.2-3.2A11 11 0 0 0 2.1 7.1l3.7 2.8C6.7 7.3 9.1 5.4 12 5.4z"/></svg>`;
+
+function authCard() {
+  const mode = state.authMode;
+  const err = state.authError ? `<p class="form-error" role="alert">${esc(state.authError)}</p>` : '';
+  const busy = state.busy ? 'disabled' : '';
+  const email = () => `<label class="field"><span class="label">Email</span><input class="input" name="email" type="email" data-key="auth-email" value="${val('auth-email')}" autocomplete="email" required></label>`;
+  const switchTo = (label, to) => `<button type="button" class="link" data-action="auth-mode" data-to="${to}">${label}</button>`;
+
+  if (mode === 'linking') {
+    return `<div class="auth-card"><h2>Signing you in…</h2><p class="sub">One moment while we check your sign-in link.</p></div>`;
+  }
+
+  if (mode === 'link-sent') {
+    return `<div class="auth-card">
+      <div class="sent-icon" aria-hidden="true">${I.mail}</div>
+      <h2>Check your email</h2>
+      <p class="sub">We sent a sign-in link to <strong>${esc(state.drafts['auth-email'] || 'your email')}</strong>. Open it on this device to finish signing in. It can take a minute, and sometimes lands in spam.</p>
+      ${err}
+      <button type="button" class="btn btn-ghost btn-block" data-action="resend-link" ${busy}>${state.busy ? 'Sending…' : 'Send the link again'}</button>
+      <p class="auth-switch">Wrong address? ${switchTo('Use a different email', 'link')}</p>
+    </div>`;
+  }
+
+  if (mode === 'link-confirm') {
+    return `<form class="auth-card" data-form="auth" novalidate>
+      <h2>Confirm your email</h2>
+      <p class="sub">This sign-in link was opened in a different browser or device than the one that asked for it. Enter the same email to finish.</p>
+      ${email()}
+      ${err}
+      <button class="btn btn-primary btn-block" ${busy}>${state.busy ? 'One moment…' : 'Finish signing in'}</button>
+      <p class="auth-switch">${switchTo('Cancel', 'signin')}</p>
+    </form>`;
+  }
+
+  if (mode === 'link') {
+    return `<form class="auth-card" data-form="auth" novalidate>
+      <h2>Sign in with a link</h2>
+      <p class="sub">No password needed. We'll email you a link that signs you in.</p>
+      ${email()}
+      <label class="field"><span class="label">Your name</span><input class="input" name="name" data-key="auth-name" value="${val('auth-name')}" autocomplete="name"><span class="hint">Only needed the first time, so others on your lists know who you are.</span></label>
+      ${err}
+      <button class="btn btn-primary btn-block" ${busy}>${state.busy ? 'Sending…' : 'Email me a link'}</button>
+      <p class="auth-switch">${switchTo('Use a password instead', 'signin')}</p>
+    </form>`;
+  }
+
+  const up = mode === 'signup';
+  return `<form class="auth-card" data-form="auth" novalidate>
+    <h2>${up ? 'Create your account' : 'Welcome back'}</h2>
+    <p class="sub">${up ? 'You can make a list and invite people right after.' : 'Sign in to see your lists.'}</p>
+    ${up ? `<label class="field"><span class="label">Your name</span><input class="input" name="name" data-key="auth-name" value="${val('auth-name')}" autocomplete="name" required></label>` : ''}
+    ${email()}
+    <label class="field"><span class="label">Password</span><input class="input" name="password" type="password" data-key="auth-pw" value="${val('auth-pw')}" autocomplete="${up ? 'new-password' : 'current-password'}" minlength="6" required>${up ? '<span class="hint">At least 6 characters.</span>' : ''}</label>
+    ${err}
+    <button class="btn btn-primary btn-block" ${busy}>${state.busy ? 'One moment…' : up ? 'Create account' : 'Sign in'}</button>
+    ${backend.signInWithGoogle || backend.sendSignInLink ? '<div class="or"><span>or</span></div>' : ''}
+    ${backend.signInWithGoogle ? `<button type="button" class="btn btn-ghost btn-block btn-alt" data-action="google" ${busy}>${GOOGLE_G}Continue with Google</button>` : ''}
+    ${backend.sendSignInLink ? `<button type="button" class="btn btn-ghost btn-block btn-alt" data-action="auth-mode" data-to="link" ${busy}>${I.mail}Email me a sign-in link</button>` : ''}
+    <p class="auth-switch">${up ? 'Already have an account?' : 'New to Stocked?'} ${switchTo(up ? 'Sign in' : 'Create an account', up ? 'signin' : 'signup')}</p>
+  </form>`;
 }
 
 /* ---- top bar */
@@ -213,6 +270,7 @@ function topbar() {
     ${inList ? `<div class="topbar-title"><span class="topbar-emoji" aria-hidden="true">${esc(l.emoji || '🧺')}</span><div><h1>${esc(l.name)}</h1><p>You're ${myRole() === 'manager' ? 'the' : 'a'} ${ROLES[myRole()]?.label.toLowerCase() || 'member'}</p></div></div>` : '<span class="spacer"></span>'}
     ${DEMO ? '<span class="chip chip-quiet demo-chip">Demo</span>' : ''}
     <button class="avatar-btn" data-action="account" aria-label="Account: ${esc(state.user.name)}">${avatar(state.user.name)}</button>
+    <button class="btn btn-ghost btn-small signout-btn" data-action="sign-out" aria-label="Sign out">${I.logout}<span>Sign out</span></button>
   </div></header>`;
 }
 
@@ -603,7 +661,25 @@ const actions = {
     state.busy = false; render();
   },
 
-  'auth-mode'() { state.authMode = state.authMode === 'signin' ? 'signup' : 'signin'; state.authError = ''; render(); },
+  'auth-mode'(el) {
+    const to = el.dataset.to || (state.authMode === 'signin' ? 'signup' : 'signin');
+    if (state.authMode === 'link-confirm') backend.clearLink?.();
+    state.authMode = to; state.authError = ''; render();
+  },
+
+  async 'resend-link'() {
+    state.busy = true; state.authError = ''; render();
+    try { await backend.sendSignInLink(state.drafts['auth-email'] || '', state.drafts['auth-name'] || ''); toast('Sent another link.'); }
+    catch (e) { state.authError = friendlyError(e); }
+    state.busy = false; render();
+  },
+
+  async 'sign-out'() {
+    closeList();
+    location.hash = '#/';
+    await backend.signOut();
+    toast('Signed out.');
+  },
 
   account() {
     openDialog({
@@ -749,7 +825,27 @@ const actions = {
 const forms = {
   async auth(form) {
     const fd = new FormData(form);
-    const up = state.authMode === 'signup';
+    const mode = state.authMode;
+    if (mode === 'link' || mode === 'link-confirm') {
+      const email = String(fd.get('email') || '').trim();
+      if (!email) { state.authError = 'Enter your email.'; render(); return; }
+      state.drafts['auth-email'] = email;
+      state.drafts['auth-name'] = String(fd.get('name') || state.drafts['auth-name'] || '').trim();
+      state.busy = true; state.authError = ''; render();
+      try {
+        if (mode === 'link') {
+          await backend.sendSignInLink(email, state.drafts['auth-name']);
+          state.authMode = 'link-sent';
+        } else {
+          const u = await backend.finishLinkSignIn(email);
+          if (state.user?.uid === u.uid) state.user.name = u.name;
+          state.authMode = 'signin';
+        }
+      } catch (e) { state.authError = friendlyError(e); }
+      state.busy = false; render();
+      return;
+    }
+    const up = mode === 'signup';
     const email = String(fd.get('email') || '').trim();
     const pw = String(fd.get('password') || '');
     const name = String(fd.get('name') || '').trim();
@@ -881,6 +977,19 @@ function route() {
 }
 
 addEventListener('hashchange', route);
+
+// Opened from an email sign-in link? Finish signing in, or ask for the email if it was opened elsewhere.
+const link = backend.pendingLink?.();
+if (link) {
+  if (link.email) {
+    state.authMode = 'linking';
+    backend.finishLinkSignIn(link.email)
+      .then((u) => { if (state.user?.uid === u.uid) state.user.name = u.name; state.authMode = 'signin'; render(); })
+      .catch((e) => { backend.clearLink(); state.authMode = 'link'; state.authError = friendlyError(e); render(); });
+  } else {
+    state.authMode = 'link-confirm';
+  }
+}
 
 backend.onAuth((u) => {
   const was = state.user?.uid;

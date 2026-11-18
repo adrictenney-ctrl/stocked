@@ -1,8 +1,10 @@
-// Firebase backend: Firebase Auth (email + password) and Cloud Firestore with live updates.
+// Firebase backend: Firebase Auth (email + password, Google, email link) and Cloud Firestore with live updates.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
-  getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver,
+  onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut, updateProfile, GoogleAuthProvider, signInWithPopup,
+  sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, getDocs, onSnapshot, query, where,
@@ -11,7 +13,12 @@ import {
 
 export function createFirebaseBackend(config) {
   const app = initializeApp(config);
-  const auth = getAuth(app);
+  // Stay signed in on this device until the person signs out (survives closing the tab or browser).
+  const auth = initializeAuth(app, {
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+    popupRedirectResolver: browserPopupRedirectResolver,
+  });
+  const LINK_KEY = 'stocked-email-link';
   const db = getFirestore(app);
 
   const listRef = (id) => doc(db, 'lists', id);
@@ -56,6 +63,35 @@ export function createFirebaseBackend(config) {
       const cred = await signInWithPopup(auth, provider);
       await saveProfile(cred.user);
     },
+
+    // Email link (passwordless) sign-in: send a link, then finish when the person opens it.
+    async sendSignInLink(email, name) {
+      await sendSignInLinkToEmail(auth, email.trim(), {
+        url: location.origin + location.pathname,
+        handleCodeInApp: true,
+      });
+      try { localStorage.setItem(LINK_KEY, JSON.stringify({ email: email.trim(), name: (name || '').trim() })); } catch {}
+    },
+    // Returns { email } when this page was opened from a sign-in link (email is '' if it was opened on another device).
+    pendingLink() {
+      if (!isSignInWithEmailLink(auth, location.href)) return null;
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(LINK_KEY)) || {}; } catch {}
+      return { email: saved.email || '' };
+    },
+    async finishLinkSignIn(email) {
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(LINK_KEY)) || {}; } catch {}
+      const cred = await signInWithEmailLink(auth, email.trim(), location.href);
+      const name = cred.user.displayName || saved.name || '';
+      if (!cred.user.displayName && name) await updateProfile(cred.user, { displayName: name });
+      await saveProfile(cred.user, name);
+      try { localStorage.removeItem(LINK_KEY); } catch {}
+      history.replaceState(null, '', location.pathname + location.hash);
+      return toUser(cred.user);
+    },
+    clearLink() { history.replaceState(null, '', location.pathname); },
+
     signOut() { return signOut(auth); },
 
     watchMyLists(uid, cb, onErr) {
