@@ -57,15 +57,19 @@ firebase use --add
 firebase deploy --only firestore:rules
 ```
 
-## Put it online (Firebase Hosting)
+## The live site (GitHub Pages)
 
-After the steps above:
+The app is published at **https://adrictenney-ctrl.github.io/stocked/** from the `main` branch of
+https://github.com/adrictenney-ctrl/stocked. Every push to `main` updates the site in about a minute:
 
 ```bash
-firebase deploy --only hosting
+git add -A
+git commit -m "Describe the change"
+git push
 ```
 
-Firebase prints your site's address (something like `https://your-project.web.app`). Everyone on the list can use that link.
+For Google sign-in to work there, `adrictenney-ctrl.github.io` must be listed in Firebase under
+**Authentication → Settings → Authorized domains**.
 
 ## Files
 
